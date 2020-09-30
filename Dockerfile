@@ -55,8 +55,6 @@ RUN cd fairseq && \
 
 COPY src/recognize.py /app/fairseq/examples/wav2vec/recognize.py
 
-COPY fairseq/examples/wav2vec/recognize.py /root/fairseq/examples/wav2vec/recognize.py
-
 WORKDIR /app/fairseq
 RUN pip install --editable ./ && python examples/speech_recognition/infer.py --help && python examples/wav2vec/recognize.py --help
 
