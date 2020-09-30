@@ -33,7 +33,16 @@ docker build -t wav2vec -f Dockerfile .
 ```
 
 ## How to Run
-Before running, please copy the downloaded model (e.g. `wav2vec_small_10m.pt`) to the `data/` folder. Please copy there the wav file to test as well, like `data/temp.wav` in the following examples. We now run the container as a daemon and the we enter and execute the recognition.
+Before running, please copy the downloaded model (e.g. `wav2vec_small_10m.pt`) to the `data/` folder. Please copy there the wav file to test as well, like `data/temp.wav` in the following examples.  So the `data/` folder will now look like this
+
+```
+.
+├── dict.ltr.txt
+├── temp.wav
+└── wav2vec_small_10m.pt
+```
+
+We now run the container as a daemon and the we enter and execute the recognition.
 ```bash
 docker run -d -it --rm -v $PWD/data:/app/data --name w2v wav2vec
 docker exec -it w2v bash
