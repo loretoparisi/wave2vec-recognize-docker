@@ -139,7 +139,7 @@ def post_process(sentence: str, symbol: str):
 
 def get_feature(filepath):
     def postprocess(feats, sample_rate):
-        if feats.dim == 2:
+        if feats.dim() == 2:
             feats = feats.mean(-1)
 
         assert feats.dim() == 1, feats.dim()
