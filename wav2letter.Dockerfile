@@ -9,6 +9,7 @@ ENV KENLM_ROOT_DIR=/root/kenlm
 ENV LD_LIBRARY_PATH=/opt/intel/compilers_and_libraries_2018.5.274/linux/mkl/lib/intel64:$LD_IBRARY_PATH
 WORKDIR /root/wav2letter/bindings/python
 
+#added editdistance package as pip install 
 RUN TMPDIR=/data/mydir/ pip install --upgrade pip && pip install --cache-dir=/data/vincents/ --build /data/mydir/ editdistance soundfile packaging && pip install -e .
 
 WORKDIR /root
