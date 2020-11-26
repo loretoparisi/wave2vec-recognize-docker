@@ -22,6 +22,29 @@ parser.add_argument('--target_dict_path', type=str,
                     default='dict.ltr.txt',
                     help='path of target dict (dict.ltr.txt)')
 
+def base_architecture(args):
+    args.no_pretrained_weights = getattr(args, "no_pretrained_weights", False)
+    args.dropout_input = getattr(args, "dropout_input", 0)
+    args.final_dropout = getattr(args, "final_dropout", 0)
+    args.apply_mask = getattr(args, "apply_mask", False)
+    args.dropout = getattr(args, "dropout", 0)
+    args.attention_dropout = getattr(args, "attention_dropout", 0)
+    args.activation_dropout = getattr(args, "activation_dropout", 0)
+
+    args.mask_length = getattr(args, "mask_length", 10)
+    args.mask_prob = getattr(args, "mask_prob", 0.5)
+    args.mask_selection = getattr(args, "mask_selection", "static")
+    args.mask_other = getattr(args, "mask_other", 0)
+    args.no_mask_overlap = getattr(args, "no_mask_overlap", False)
+    args.mask_channel_length = getattr(args, "mask_channel_length", 10)
+    args.mask_channel_prob = getattr(args, "mask_channel_prob", 0.5)
+    args.mask_channel_selection = getattr(args, "mask_channel_selection", "static")
+    args.mask_channel_other = getattr(args, "mask_channel_other", 0)
+    args.no_mask_channel_overlap = getattr(args, "no_mask_channel_overlap", False)
+
+    args.freeze_finetune_updates = getattr(args, "freeze_finetune_updates", 0)
+    args.feature_grad_mult = getattr(args, "feature_grad_mult", 0)
+    args.layerdrop = getattr(args, "layerdrop", 0.0)
 
 class Wav2VecCtc(BaseFairseqModel):
     def __init__(self, w2v_encoder, args):
