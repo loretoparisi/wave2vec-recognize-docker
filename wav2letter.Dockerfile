@@ -9,7 +9,8 @@ ENV KENLM_ROOT_DIR=/root/kenlm
 ENV LD_LIBRARY_PATH=/opt/intel/compilers_and_libraries_2018.5.274/linux/mkl/lib/intel64:$LD_IBRARY_PATH
 WORKDIR /root/wav2letter/bindings/python
 
-RUN pip install --upgrade pip && pip install soundfile packaging && pip install -e .
+#added editdistance package as pip install 
+RUN TMPDIR=/data/mydir/ pip install --upgrade pip && pip install --cache-dir=/data/vincents/ --build /data/mydir/ editdistance soundfile packaging && pip install -e .
 
 WORKDIR /root
 RUN git clone https://github.com/pytorch/fairseq.git
@@ -17,4 +18,5 @@ RUN mkdir data
 COPY src/recognize.py /root/fairseq/examples/wav2vec/recognize.py
 
 WORKDIR /root/fairseq
-RUN pip install --editable ./ && python examples/speech_recognition/infer.py --help && python examples/wav2vec/recognize.py --help
+RUN TMPDIR=/data/mydir/ pip install --cache-dir=/data/mydir/ --editable ./ && python examples/speech_recognition/infer.py --help && python examples/wav2vec/recognize.py --help
+
