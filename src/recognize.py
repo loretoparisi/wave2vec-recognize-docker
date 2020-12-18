@@ -1,26 +1,24 @@
 import torch
-import argparse
 import soundfile as sf
 import torch.nn.functional as F
 import itertools as it
-from fairseq import utils
-from fairseq.models import BaseFairseqModel
-from examples.speech_recognition.w2l_decoder import W2lViterbiDecoder
 from fairseq.data import Dictionary
-from fairseq.models.wav2vec.wav2vec2_asr import Wav2VecEncoder
+from fairseq.data.data_utils import post_process
+from fairseq.models.wav2vec.wav2vec2_asr import Wav2VecEncoder, Wav2VecCtc
 from wav2letter.decoder import CriterionType
 from wav2letter.criterion import CpuViterbiPath, get_data_ptr_as_bytes
 
-parser = argparse.ArgumentParser(description='Wav2vec-2.0 Recognize')
-parser.add_argument('--wav_path', type=str,
-                    default='~/xxx.wav',
-                    help='path of wave file')
-parser.add_argument('--w2v_path', type=str,
-                    default='~/wav2vec2_vox_960h.pt',
-                    help='path of pre-trained wav2vec-2.0 model')
-parser.add_argument('--target_dict_path', type=str,
-                    default='dict.ltr.txt',
-                    help='path of target dict (dict.ltr.txt)')
+def parse_args():
+    import argparse
+    parser = argparse.ArgumentParser(description='Wav2vec-2.0 Recognize')
+    parser.add_argument('w2v_path', type=str,
+                        help='path of pre-trained wav2vec-2.0 model')
+    parser.add_argument('wav_path', type=str,
+                        help='path of wave file')
+    parser.add_argument('--target_dict_path', type=str,
+                        default='dict.ltr.txt',
+                        help='path of target dict (dict.ltr.txt)')
+    return parser.parse_args()
 
 def base_architecture(args):
     args.no_pretrained_weights = getattr(args, "no_pretrained_weights", False)
@@ -45,36 +43,7 @@ def base_architecture(args):
     args.freeze_finetune_updates = getattr(args, "freeze_finetune_updates", 0)
     args.feature_grad_mult = getattr(args, "feature_grad_mult", 0)
     args.layerdrop = getattr(args, "layerdrop", 0.0)
-
-class Wav2VecCtc(BaseFairseqModel):
-    def __init__(self, w2v_encoder, args):
-        super().__init__()
-        self.w2v_encoder = w2v_encoder
-        self.args = args
-
-    def upgrade_state_dict_named(self, state_dict, name):
-        super().upgrade_state_dict_named(state_dict, name)
-        return state_dict
-
-    @classmethod
-    def build_model(cls, args, target_dict):
-        """Build a new model instance."""
-        base_architecture(args)
-        w2v_encoder = Wav2VecEncoder(args, target_dict)
-        return cls(w2v_encoder, args)
-
-    def get_normalized_probs(self, net_output, log_probs):
-        """Get normalized probabilities (or log probs) from a net's output."""
-        logits = net_output["encoder_out"]
-        if log_probs:
-            return utils.log_softmax(logits.float(), dim=-1)
-        else:
-            return utils.softmax(logits.float(), dim=-1)
-
-    def forward(self, **kwargs):
-        x = self.w2v_encoder(**kwargs)
-        return x
-
+    return args
 
 class W2lDecoder(object):
     def __init__(self, tgt_dict):
@@ -117,6 +86,7 @@ class W2lDecoder(object):
         return torch.LongTensor(list(idxs))
 
 
+# from examples.speech_recognition.w2l_decoder import W2lViterbiDecoder
 class W2lViterbiDecoder(W2lDecoder):
     def __init__(self, tgt_dict):
         super().__init__(tgt_dict)
@@ -145,71 +115,57 @@ class W2lViterbiDecoder(W2lDecoder):
             [{"tokens": self.get_tokens(viterbi_path[b].tolist()), "score": 0}] for b in range(B)
         ]
 
+class Wav2VecPredictor:
+    def __init__(self, w2v_path, target_dict_path):
+        self._target_dict = Dictionary.load(target_dict_path)
+        self._generator = W2lViterbiDecoder(self._target_dict)
+        self._model = self._load_model(w2v_path, self._target_dict)
+        self._model.eval()
 
-def post_process(sentence: str, symbol: str):
-    if symbol == "sentencepiece":
-        sentence = sentence.replace(" ", "").replace("\u2581", " ").strip()
-    elif symbol == 'wordpiece':
-        sentence = sentence.replace(" ", "").replace("_", " ").strip()
-    elif symbol == 'letter':
-        sentence = sentence.replace(" ", "").replace("|", " ").strip()
-    elif symbol == "_EOW":
-        sentence = sentence.replace(" ", "").replace("_EOW", " ").strip()
-    elif symbol is not None and symbol != 'none':
-        sentence = (sentence + " ").replace(symbol, "").rstrip()
-    return sentence
+    def _get_feature(self, filepath):
+        def postprocess(feats, sample_rate):
+            if feats.dim() == 2:
+                feats = feats.mean(-1)
 
+            assert feats.dim() == 1, feats.dim()
 
-def get_feature(filepath):
-    def postprocess(feats, sample_rate):
-        if feats.dim() == 2:
-            feats = feats.mean(-1)
+            with torch.no_grad():
+                feats = F.layer_norm(feats, feats.shape)
+            return feats
 
-        assert feats.dim() == 1, feats.dim()
-
-        with torch.no_grad():
-            feats = F.layer_norm(feats, feats.shape)
+        wav, sample_rate = sf.read(filepath)
+        feats = torch.from_numpy(wav).float()
+        feats = postprocess(feats, sample_rate)
         return feats
 
-    wav, sample_rate = sf.read(filepath)
-    feats = torch.from_numpy(wav).float()
-    feats = postprocess(feats, sample_rate)
-    return feats
+    def _load_model(self, model_path, target_dict):
+        w2v = torch.load(model_path)
 
+        # Without create a FairseqTask
+        args = base_architecture(w2v["args"])
+        model = Wav2VecCtc(args, Wav2VecEncoder(args, target_dict))
+        model.load_state_dict(w2v["model"], strict=True)
+        return model
 
-def load_model(model_path, target_dict):
-    w2v = torch.load(model_path)
-    model = Wav2VecCtc.build_model(w2v["args"], target_dict)
-    model.load_state_dict(w2v["model"], strict=True)
+    def predict(self, wav_path):
+        sample = dict()
+        net_input = dict()
 
-    return [model]
+        feature = self._get_feature(wav_path)
+        net_input["source"] = feature.unsqueeze(0)
 
+        padding_mask = torch.BoolTensor(net_input["source"].size(1)).fill_(False).unsqueeze(0)
 
-def main():
-    args = parser.parse_args()
-    sample = dict()
-    net_input = dict()
+        net_input["padding_mask"] = padding_mask
+        sample["net_input"] = net_input
 
-    feature = get_feature(args.wav_path)
-    target_dict = Dictionary.load(args.target_dict_path)
+        with torch.no_grad():
+            hypo = self._generator.generate([ self._model ], sample, prefix_tokens=None)
 
-    model = load_model(args.w2v_path, target_dict)
-    model[0].eval()
-
-    generator = W2lViterbiDecoder(target_dict)
-    net_input["source"] = feature.unsqueeze(0)
-
-    padding_mask = torch.BoolTensor(net_input["source"].size(1)).fill_(False).unsqueeze(0)
-
-    net_input["padding_mask"] = padding_mask
-    sample["net_input"] = net_input
-
-    with torch.no_grad():
-        hypo = generator.generate(model, sample, prefix_tokens=None)
-
-    hyp_pieces = target_dict.string(hypo[0][0]["tokens"].int().cpu())
-    print(post_process(hyp_pieces, 'letter'))
-
+        hyp_pieces = self._target_dict.string(hypo[0][0]["tokens"].int().cpu())
+        return post_process(hyp_pieces, 'letter')
 
 if __name__ == '__main__':
-    main()
+    args = parse_args()
+    model = Wav2VecPredictor(args.w2v_path, args.target_dict_path)
+    print(model.predict(args.wav_path))
