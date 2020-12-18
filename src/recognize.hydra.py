@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import itertools as it
 from fairseq.data import Dictionary
 from fairseq.data.data_utils import post_process
-from fairseq.models.wav2vec.wav2vec2_asr import Wav2VecEncoder, Wav2VecCtc
+from fairseq.models.wav2vec.wav2vec2_asr import Wav2VecEncoder, Wav2VecCtc, Wav2Vec2AsrConfig
 from wav2letter.decoder import CriterionType
 from wav2letter.criterion import CpuViterbiPath, get_data_ptr_as_bytes
 
@@ -115,6 +115,15 @@ class W2lViterbiDecoder(W2lDecoder):
             [{"tokens": self.get_tokens(viterbi_path[b].tolist()), "score": 0}] for b in range(B)
         ]
 
+
+from dataclasses import dataclass
+from omegaconf import OmegaConf
+from fairseq.dataclass.configs import FairseqConfig
+
+@dataclass
+class Wav2Vec2CheckpointConfig(FairseqConfig):
+    model: Wav2Vec2AsrConfig = Wav2Vec2AsrConfig()
+
 class Wav2VecPredictor:
     def __init__(self, w2v_path, target_dict_path):
         self._target_dict = Dictionary.load(target_dict_path)
@@ -141,10 +150,18 @@ class Wav2VecPredictor:
     def _load_model(self, model_path, target_dict):
         w2v = torch.load(model_path)
 
-        # Without create a FairseqTask
-        args = base_architecture(w2v["args"])
-        model = Wav2VecCtc(args, Wav2VecEncoder(args, target_dict))
+        # Finetuned with Hydra: w2v["args"] -> w2v["cfg"] + Wav2Vec2AsrConfig
+        OmegaConf.set_struct(w2v["cfg"], False)
+        del w2v["cfg"].distributed_training["distributed_num_procs"]  # Where this redundancy prop comes from?
+        cfg = OmegaConf.merge(OmegaConf.structured(Wav2Vec2CheckpointConfig), w2v["cfg"])
+        model = Wav2VecCtc.build_model(cfg.model, target_dict)
+
+        # Imitate `Wav2VecCtc.build_model()` Without creating a FairseqTask
+        model = Wav2VecCtc(cfg.model, Wav2VecEncoder(cfg.model, target_dict))
+
+        # Load checkpoint's saved weights
         model.load_state_dict(w2v["model"], strict=True)
+
         return model
 
     def predict(self, wav_path):
