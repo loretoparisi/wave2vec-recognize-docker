@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install fairseq
 RUN git clone https://github.com/pytorch/fairseq --depth=1 && cd fairseq && \
+    git checkout ac11107ed41cb06a758af850373c239309d1c961 && \
     pip install --editable .
 
 # Install kenlm
