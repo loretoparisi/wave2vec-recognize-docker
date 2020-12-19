@@ -27,12 +27,16 @@ Wav2Vec 2.0 Large (LV-60) | 960 hours | [Libri-Light](https://github.com/faceboo
 
 
 ## How to install
-We make use of `python:3.7.4-slim-buster` as base image in order to let developers to have more flexibility in customize this `Dockerfile`. For a simplifed install please refer to [Alternative Install](#Alternative-Install) section. If you go for this container, please install using the provided `Dockerfile`
+We make use of `python:3.8.6-slim-buster` as base image in order to let developers to have more flexibility in customize this `Dockerfile`. For a simplifed install please refer to [Alternative Install](#Alternative-Install) section. If you go for this container, please install using the provided `Dockerfile`
 ```bash
 docker build -t wav2vec -f Dockerfile .
 ```
 
 ## How to Run
+There are two version of `recognize.py`.
+- `recognize.py`: For running legacy finetuned model (without Hydra).
+- `recognize.hydra.py`: For running new finetuned with newer version of **fairseq**.
+
 Before running, please copy the downloaded model (e.g. `wav2vec_small_10m.pt`) to the `data/` folder. Please copy there the wav file to test as well, like `data/temp.wav` in the following examples.  So the `data/` folder will now look like this
 
 ```
@@ -42,11 +46,47 @@ Before running, please copy the downloaded model (e.g. `wav2vec_small_10m.pt`) t
 └── wav2vec_small_10m.pt
 ```
 
-We now run the container as a daemon and the we enter and execute the recognition.
+We now run the container and the we enter and execute the recognition (`recognize.py` or `recognize.hydra.py`).
 ```bash
 docker run -d -it --rm -v $PWD/data:/app/data --name w2v wav2vec
 docker exec -it w2v bash
-python examples/wav2vec/recognize.py --wav_path /app/data/temp.wav --w2v_path /app/data/wav2vec_small_10m.pt --target_dict_path /app/data/dict.ltr.txt 
+python examples/wav2vec/recognize.py --target_dict_path=/app/data/dict.ltr.txt /app/data/wav2vec_small_10m.pt /app/data/temp.wav
+```
+
+## Common issues
+### 1. What if my model are not compatible with **fairseq**?
+
+At the very least, we have tested with fairseq master branch (> v0.10.1, commit [ac11107](https://github.com/pytorch/fairseq/commit/ac11107ed41cb06a758af850373c239309d1c961)). When you run into issues, like this:
+```txt
+omegaconf.errors.ValidationError: Invalid value 'False', expected one of [hard, soft]
+full_key: generation.print_alignment
+reference_type=GenerationConfig
+object_type=GenerationConfig
+```
+It's probably that your model've been finetuned (or trained) with other version of **fairseq**.
+You should find yourself which version your model are trained, and edit commit hash in Dockerfile accordingly, **BUT IT MIGHT BREAK src/recognize.py**.
+
+The workaround is look for what's changed in the parameters inside **fairseq** source code. In the above example, I've managed to find that:
+
+***fairseq/dataclass/configs.py (72a25a4 -> 032a404)***
+```diff
+- print_alignment: bool = field(
++ print_alignment: Optional[PRINT_ALIGNMENT_CHOICES] = field(
+-     default=False,
++     default=None,
+      metadata={
+-         "help": "if set, uses attention feedback to compute and print alignment to source tokens"
++         "help": "if set, uses attention feedback to compute and print alignment to source tokens "
++         "(valid options are: hard, soft, otherwise treated as hard alignment)",
++         "argparse_const": "hard",
+      },
+  )
+```
+The problem is fairseq had modified such that `generation.print_alignment` not valid anymore, so I modify `recognize.hydra.py` as below (you might wanna modify the value instead):
+```diff
+  OmegaConf.set_struct(w2v["cfg"], False)
++ del w2v["cfg"].generation["print_alignment"]
+  cfg = OmegaConf.merge(OmegaConf.structured(Wav2Vec2CheckpointConfig), w2v["cfg"])
 ```
 
 ## Alternative install
