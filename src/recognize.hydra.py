@@ -152,9 +152,7 @@ class Wav2VecPredictor:
 
         # Finetuned with Hydra: w2v["args"] -> w2v["cfg"] + Wav2Vec2AsrConfig
         OmegaConf.set_struct(w2v["cfg"], False)
-        del w2v["cfg"].distributed_training["distributed_num_procs"]  # Where this redundancy prop comes from?
         cfg = OmegaConf.merge(OmegaConf.structured(Wav2Vec2CheckpointConfig), w2v["cfg"])
-        model = Wav2VecCtc.build_model(cfg.model, target_dict)
 
         # Imitate `Wav2VecCtc.build_model()` Without creating a FairseqTask
         model = Wav2VecCtc(cfg.model, Wav2VecEncoder(cfg.model, target_dict))
