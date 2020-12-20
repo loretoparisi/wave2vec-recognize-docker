@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install fairseq
 RUN git clone https://github.com/pytorch/fairseq --depth=1 && cd fairseq && \
+    git fetch origin ac11107ed41cb06a758af850373c239309d1c961 && \
     git checkout ac11107ed41cb06a758af850373c239309d1c961 && \
     pip install --editable .
 
@@ -47,4 +48,5 @@ RUN git clone https://github.com/facebookresearch/wav2letter -b v0.2 --depth=1 &
 RUN pip install soundfile && \
     apt install -y --no-install-recommends libsndfile1
 
+COPY src/ .
 CMD ["bash"]
