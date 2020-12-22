@@ -103,5 +103,6 @@ python examples/wav2vec/recognize.py --wav_path /root/data/temp.wav --w2v_path /
 ## Contributors
 Thanks to all contributors to this repo.
 
-- [sooftware](https://github.com/sooftware)
-- [mychiux413](https://github.com/mychiux413)
+- [@sooftware](https://github.com/sooftware)
+- [@mychiux413](https://github.com/mychiux413)
+- [@osddeitf](https://github.com/osddeitf)
